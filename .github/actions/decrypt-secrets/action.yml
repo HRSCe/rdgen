@@ -29,9 +29,12 @@ runs:
         password = os.environ.get('ZIP_PWD')
         zip_path = os.environ.get('ZIP_PATH')
 
-        with pyzipper.AESZipFile(zip_path) as zf:
-            zf.setpassword(password.encode())
-            zf.extractall('.')
+        if os.path.exists(zip_path):
+            with pyzipper.AESZipFile(zip_path) as zf:
+                zf.setpassword(password.encode())
+                zf.extractall('.')
+        else:
+            print(f"Zip file {zip_path} not found. Skipping decryption.")
         
         if os.path.exists('secrets.json'):
             with open('secrets.json') as f:

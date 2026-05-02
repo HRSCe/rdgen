@@ -47,11 +47,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: encrypted-secrets-zip
+        continue-on-error: true
 
       - name: Load Secrets
         uses: ./.github/actions/decrypt-secrets
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
+        continue-on-error: true
 
       - name: Download the source code
         run: |
