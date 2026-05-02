@@ -4,13 +4,43 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'version to build'
+        description: 'RustDesk version (e.g. 1.3.7 or master)'
         required: true
-        default: ''
+        default: '1.3.7'
+        type: string
+      hide_cm:
+        description: 'Hide Connection Manager (No popup when connecting)'
+        required: false
+        default: true
+        type: boolean
+      server:
+        description: 'ID/Rendezvous Server'
+        required: false
+        default: 'keresztes.net'
+        type: string
+      key:
+        description: 'Public Key'
+        required: false
+        default: 'OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw='
+        type: string
+      api_server:
+        description: 'API Server'
+        required: false
+        default: 'https://keresztes.net'
+        type: string
+      appname:
+        description: 'Application Name'
+        required: false
+        default: 'RustDesk Custom'
+        type: string
+      filename:
+        description: 'Output Filename'
+        required: false
+        default: 'rustdesk_custom'
         type: string
       zip_url:
-        description: 'url or base64 data'
-        required: true
+        description: 'ADVANCED: Base64 data (leave empty if using inputs above)'
+        required: false
         default: ''
         type: string
 
@@ -40,6 +70,15 @@ env:
 
 jobs:
   setup:
+    runs-on: ubuntu-latest
+    outputs:
+      has_zip: ${{ inputs.zip_url != '' }}
+    steps:
+      - name: dummy
+        run: echo "Starting build..."
+
+  fetch-secrets:
+    if: inputs.zip_url != ''
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
     with:
       zip_url_json: ${{ inputs.zip_url }}
@@ -50,7 +89,6 @@ jobs:
       version: ${{ inputs.version }}
 
   build-RustDeskTempTopMostWindow:
-    needs: setup
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       upload-artifact: true
@@ -62,7 +100,7 @@ jobs:
 
   build-for-windows-flutter:
     name: Build Windows
-    needs: [build-RustDeskTempTopMostWindow, generate-bridge, setup]
+    needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -78,14 +116,47 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         
-      - uses: actions/download-artifact@v4
+      - name: Load Manual Inputs or Zip
+        shell: pwsh
+        run: |
+          if ("${{ inputs.zip_url }}" -ne "") {
+            echo "Using ZIP input"
+            # We don't need to do much here, decrypt-secrets will handle it if we have the zip
+          } else {
+            echo "Using manual inputs"
+            echo "appname=${{ inputs.appname }}" >> $env:GITHUB_ENV
+            echo "filename=${{ inputs.filename }}" >> $env:GITHUB_ENV
+            echo "server=${{ inputs.server }}" >> $env:GITHUB_ENV
+            echo "key=${{ inputs.key }}" >> $env:GITHUB_ENV
+            echo "apiServer=${{ inputs.api_server }}" >> $env:GITHUB_ENV
+            
+            # Construct custom JSON for hide_cm
+            $custom = @{
+              "allow-hide-cm" = if ("${{ inputs.hide_cm }}" -eq "true") { "Y" } else { "N" }
+              "verification-method" = if ("${{ inputs.hide_cm }}" -eq "true") { "use-permanent-password" } else { "use-both-passwords" }
+            }
+            $custom_json = @{
+              "default-settings" = $custom
+              "override-settings" = $custom
+            } | ConvertTo-Json -Compress
+            
+            $encoded = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($custom_json))
+            echo "custom=$encoded" >> $env:GITHUB_ENV
+          }
+
+      - name: Download and Decrypt Zip if present
+        if: inputs.zip_url != ''
+        uses: actions/download-artifact@v4
         with:
           name: encrypted-secrets-zip
+        continue-on-error: true
 
-      - name: Load Secrets
+      - name: Decrypt Zip
+        if: inputs.zip_url != ''
         uses: ./.github/actions/decrypt-secrets
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
+        continue-on-error: true
 
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
@@ -293,54 +364,6 @@ jobs:
           b64=$(base64 -w0 < ./res/icon.png)
           perl -0777 -pe "s|iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHL[A-Za-z0-9+/=]+|$b64|g" -i.bak ./src/ui.rs
 
-      - name: fix connection delay
-        continue-on-error: true
-        if: ${{ env.delayFix == 'true' }}
-        shell: bash
-        run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
-
-      - name: add cycle monitors to toolbar
-        if: env.cycleMonitor == 'true'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 1
-          max_attempts: 3
-          shell: pwsh
-          continue_on_error: true
-          command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/cycle_monitor.diff -OutFile cycle_monitor.diff
-            git apply cycle_monitor.diff
-
-      - name: use X for offline display instead of orange circle
-        if: env.xOffline == 'true'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 1
-          max_attempts: 3
-          shell: pwsh
-          continue_on_error: true
-          command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff -OutFile xoffline.diff
-            git apply xoffline.diff
-
-      - name: removeNewVersionNotif
-        continue-on-error: true
-        if: env.removeNewVersionNotif == 'true'
-        shell: bash
-        run: | 
-          sed -i -e 's|updateUrl.isNotEmpty|false|' ./flutter/lib/desktop/pages/desktop_home_page.dart
-          sed -i '/let (request, url) =/,/Ok(())/{/Ok(())/!d}' ./src/common.rs
-
-      - name: replace flutter icons
-        if: ${{ hashFiles('icon.png') != '' }}
-        continue-on-error: true
-        run: |
-          cd ./flutter
-          flutter pub get
-          flutter pub run flutter_launcher_icons
-          cd ..
-
       - name: Build rustdesk
         run: |
           python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
@@ -387,7 +410,6 @@ jobs:
 
       - name: Download RustDeskTempTopMostWindow artifacts
         uses: actions/download-artifact@master
-        if: env.UPLOAD_ARTIFACT == 'true'
         with:
           name: topmostwindow-artifacts
           path: "./rustdesk"
@@ -423,7 +445,6 @@ jobs:
 
       - name: Build self-extracted executable
         shell: bash
-        if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           mv "./rustdesk/rustdesk.exe" "./rustdesk/${{ env.appname }}.exe" || echo "rustdesk.exe"
           sed -i '/dpiAware/d' res/manifest.xml
@@ -439,7 +460,6 @@ jobs:
 
       - name: Build msi
         continue-on-error: true
-        if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           $myappname = "${{ env.appname }}" -replace '\s','_'
           cp "rustdesk/${{ env.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
@@ -499,3 +519,4 @@ jobs:
         uses: geekyeggo/delete-artifact@v5
         with:
           name: encrypted-secrets-zip
+        continue-on-error: true
