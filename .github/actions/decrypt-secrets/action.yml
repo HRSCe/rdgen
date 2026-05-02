@@ -25,13 +25,18 @@ runs:
 
         with pyzipper.AESZipFile('${{ inputs.zip_path }}') as zf:
             zf.setpassword('${{ inputs.zip_password }}'.encode())
-            with zf.open('secrets.json') as f:
+            zf.extractall('.')
+        
+        if os.path.exists('secrets.json'):
+            with open('secrets.json') as f:
                 secrets = json.load(f)
 
-        with open(os.environ['GITHUB_ENV'], 'a') as env_file:
-            for key, value in secrets.items():
-                if value:
-                    print(f"::add-mask::{value}")
-                    env_file.write(f"{key}={value}\n")
-        
-        print(f"Successfully masked {len(secrets)} secrets.")
+            with open(os.environ['GITHUB_ENV'], 'a') as env_file:
+                for key, value in secrets.items():
+                    if value:
+                        print(f"::add-mask::{value}")
+                        env_file.write(f"{key}={value}\n")
+            
+            print(f"Successfully masked {len(secrets)} secrets.")
+        else:
+            print("Warning: secrets.json not found in zip.")
