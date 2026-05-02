@@ -4,46 +4,96 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'RustDesk version (e.g. 1.3.7 or master)'
+        description: 'RustDesk version'
         required: true
         default: '1.3.7'
-        type: string
-      hide_cm:
-        description: 'Hide Connection Manager (No popup when connecting)'
-        required: false
-        default: true
-        type: boolean
       server:
-        description: 'ID/Rendezvous Server'
-        required: false
+        description: 'ID Server'
         default: 'keresztes.net'
-        type: string
       key:
-        description: 'Public Key'
-        required: false
+        description: 'Key'
         default: 'OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw='
-        type: string
       api_server:
         description: 'API Server'
-        required: false
         default: 'https://keresztes.net'
-        type: string
       appname:
-        description: 'Application Name'
-        required: false
+        description: 'App Name'
         default: 'RustDesk Custom'
-        type: string
       filename:
         description: 'Output Filename'
-        required: false
         default: 'rustdesk_custom'
-        type: string
-      zip_url:
-        description: 'ADVANCED: Base64 data (leave empty if using inputs above)'
-        required: false
+      password:
+        description: 'Permanent Password'
         default: ''
-        type: string
-
+      theme:
+        description: 'Theme'
+        type: choice
+        options: [system, light, dark]
+        default: system
+      access_mode:
+        description: 'Access Mode'
+        type: choice
+        options: [full, view-only, custom]
+        default: full
+      hide_cm:
+        description: 'Hide Connection Manager'
+        type: boolean
+        default: true
+      deny_lan:
+        description: 'Deny LAN Discovery'
+        type: boolean
+        default: false
+      auto_close:
+        description: 'Auto Disconnect'
+        type: boolean
+        default: false
+      en_keyboard:
+        description: 'Enable Keyboard'
+        type: boolean
+        default: true
+      en_clipboard:
+        description: 'Enable Clipboard'
+        type: boolean
+        default: true
+      en_file:
+        description: 'Enable File Transfer'
+        type: boolean
+        default: true
+      en_audio:
+        description: 'Enable Audio'
+        type: boolean
+        default: true
+      en_restart:
+        description: 'Enable Remote Restart'
+        type: boolean
+        default: true
+      en_record:
+        description: 'Enable Recording'
+        type: boolean
+        default: true
+      en_block:
+        description: 'Enable Block Input'
+        type: boolean
+        default: true
+      en_modi:
+        description: 'Enable Remote Config Mod'
+        type: boolean
+        default: true
+      rem_wallp:
+        description: 'Remove Wallpaper'
+        type: boolean
+        default: false
+      en_print:
+        description: 'Enable Printer'
+        type: boolean
+        default: true
+      en_cam:
+        description: 'Enable Camera'
+        type: boolean
+        default: true
+      zip_url:
+        description: 'ADVANCED: Base64 data (leave empty if using UI)'
+        default: ''
 
 env:
   SCITER_RUST_VERSION: "1.75" 
@@ -121,7 +171,6 @@ jobs:
         run: |
           if ("${{ inputs.zip_url }}" -ne "") {
             echo "Using ZIP input"
-            # We don't need to do much here, decrypt-secrets will handle it if we have the zip
           } else {
             echo "Using manual inputs"
             echo "appname=${{ inputs.appname }}" >> $env:GITHUB_ENV
@@ -130,10 +179,27 @@ jobs:
             echo "key=${{ inputs.key }}" >> $env:GITHUB_ENV
             echo "apiServer=${{ inputs.api_server }}" >> $env:GITHUB_ENV
             
-            # Construct custom JSON for hide_cm
             $custom = @{
               "allow-hide-cm" = if ("${{ inputs.hide_cm }}" -eq "true") { "Y" } else { "N" }
               "verification-method" = if ("${{ inputs.hide_cm }}" -eq "true") { "use-permanent-password" } else { "use-both-passwords" }
+              "enable-lan-discovery" = if ("${{ inputs.deny_lan }}" -eq "true") { "N" } else { "Y" }
+              "allow-auto-disconnect" = if ("${{ inputs.auto_close }}" -eq "true") { "Y" } else { "N" }
+              "theme" = "${{ inputs.theme }}"
+              "access-mode" = "${{ inputs.access_mode }}"
+              "enable-keyboard" = if ("${{ inputs.en_keyboard }}" -eq "true") { "Y" } else { "N" }
+              "enable-clipboard" = if ("${{ inputs.en_clipboard }}" -eq "true") { "Y" } else { "N" }
+              "enable-file-transfer" = if ("${{ inputs.en_file }}" -eq "true") { "Y" } else { "N" }
+              "enable-audio" = if ("${{ inputs.en_audio }}" -eq "true") { "Y" } else { "N" }
+              "enable-remote-restart" = if ("${{ inputs.en_restart }}" -eq "true") { "Y" } else { "N" }
+              "enable-record-session" = if ("${{ inputs.en_record }}" -eq "true") { "Y" } else { "N" }
+              "enable-block-input" = if ("${{ inputs.en_block }}" -eq "true") { "Y" } else { "N" }
+              "allow-remote-config-modification" = if ("${{ inputs.en_modi }}" -eq "true") { "Y" } else { "N" }
+              "allow-remove-wallpaper" = if ("${{ inputs.rem_wallp }}" -eq "true") { "Y" } else { "N" }
+              "enable-remote-printer" = if ("${{ inputs.en_print }}" -eq "true") { "Y" } else { "N" }
+              "enable-camera" = if ("${{ inputs.en_cam }}" -eq "true") { "Y" } else { "N" }
+            }
+            if ("${{ inputs.password }}" -ne "") {
+              $custom["password"] = "${{ inputs.password }}"
             }
             $custom_json = @{
               "default-settings" = $custom
@@ -363,6 +429,39 @@ jobs:
           cp ./src/ui.rs ./src/ui.rs.bak
           b64=$(base64 -w0 < ./res/icon.png)
           perl -0777 -pe "s|iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHL[A-Za-z0-9+/=]+|$b64|g" -i.bak ./src/ui.rs
+
+      - name: Fix flutter_gpu_texture_renderer
+        shell: python
+        run: |
+          import os
+          import subprocess
+
+          subprocess.run(["flutter", "pub", "get"], cwd="flutter", shell=True)
+
+          pub_cache = os.environ.get("PUB_CACHE")
+          if not pub_cache:
+              if os.name == 'nt':
+                  pub_cache = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Pub", "Cache")
+              else:
+                  pub_cache = os.path.expanduser("~/.pub-cache")
+          
+          search_dirs = ["flutter", pub_cache]
+          
+          for d in search_dirs:
+              if not os.path.exists(d): continue
+              for root, dirs, files in os.walk(d):
+                  if "d3d11_output.cpp" in files:
+                      filepath = os.path.join(root, "d3d11_output.cpp")
+                      print(f"Found {filepath}")
+                      try:
+                          with open(filepath, "r", encoding="utf-8") as f:
+                              content = f.read()
+                          if "#include <chrono>" not in content:
+                              with open(filepath, "w", encoding="utf-8") as f:
+                                  f.write("#include <chrono>\n" + content)
+                              print("Patched successfully.")
+                      except Exception as e:
+                          print(f"Failed to patch: {e}")
 
       - name: Build rustdesk
         run: |
