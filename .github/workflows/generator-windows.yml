@@ -30,6 +30,11 @@ on:
         type: choice
         options: [system, light, dark]
         default: system
+      conn_type:
+        description: 'Connection Type'
+        type: choice
+        options: [full, incoming-only, outgoing-only]
+        default: full
       access_mode:
         description: 'Access Mode'
         type: choice
@@ -200,6 +205,9 @@ jobs:
             }
             if ("${{ inputs.password }}" -ne "") {
               $custom["password"] = "${{ inputs.password }}"
+            }
+            if ("${{ inputs.conn_type }}" -ne "full") {
+              $custom["conn-type"] = "${{ inputs.conn_type }}"
             }
             $custom_json = @{
               "default-settings" = $custom
