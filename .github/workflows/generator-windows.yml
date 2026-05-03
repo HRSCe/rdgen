@@ -19,9 +19,9 @@ on:
       appname:
         description: 'App Name'
         default: 'RustDesk Custom'
-      filename:
-        description: 'Output Filename'
-        default: 'rustdesk_custom'
+      rustdesk_repo:
+        description: 'Target Source Repository'
+        default: 'rustdesk/rustdesk'
       password:
         description: 'Permanent Password'
         default: ''
@@ -142,6 +142,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ inputs.version }}
+      rustdesk_repo: ${{ inputs.rustdesk_repo || 'rustdesk/rustdesk' }}
 
   build-RustDeskTempTopMostWindow:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
@@ -179,10 +180,12 @@ jobs:
           } else {
             echo "Using manual inputs"
             echo "appname=${{ inputs.appname }}" >> $env:GITHUB_ENV
-            echo "filename=${{ inputs.filename }}" >> $env:GITHUB_ENV
+            $generated_filename = ("${{ inputs.appname }}" -replace ' ','_').ToLower()
+            echo "filename=$generated_filename" >> $env:GITHUB_ENV
             echo "server=${{ inputs.server }}" >> $env:GITHUB_ENV
             echo "key=${{ inputs.key }}" >> $env:GITHUB_ENV
             echo "apiServer=${{ inputs.api_server }}" >> $env:GITHUB_ENV
+            echo "rustdesk_repo=${{ inputs.rustdesk_repo }}" >> $env:GITHUB_ENV
             
             $custom = @{
               "allow-hide-cm" = if ("${{ inputs.hide_cm }}" -eq "true") { "Y" } else { "N" }
@@ -242,9 +245,10 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
+          repository: ${{ inputs.rustdesk_repo || 'rustdesk/rustdesk' }}
           ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
           submodules: recursive
+          token: ${{ secrets.GH_PAT || github.token }}
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
