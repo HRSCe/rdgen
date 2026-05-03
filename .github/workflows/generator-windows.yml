@@ -137,12 +137,14 @@ jobs:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
     with:
       zip_url_json: ${{ inputs.zip_url }}
+    secrets: inherit
 
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ inputs.version }}
       rustdesk_repo: ${{ inputs.rustdesk_repo || 'rustdesk/rustdesk' }}
+    secrets: inherit
 
   build-RustDeskTempTopMostWindow:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
