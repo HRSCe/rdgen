@@ -257,6 +257,7 @@ jobs:
           repository: ${{ inputs.rustdesk_repo || 'rustdesk/rustdesk' }}
           ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
           submodules: recursive
+          fetch-depth: 0
           token: ${{ secrets.GH_PAT || github.token }}
 
       - name: Restore bridge files
