@@ -190,8 +190,15 @@ jobs:
             echo "rustdesk_repo=${{ inputs.rustdesk_repo }}" >> $env:GITHUB_ENV
             
             $custom = @{
-              "allow-hide-cm" = if ("${{ inputs.hide_cm }}" -eq "true") { "Y" } else { "N" }
-              "verification-method" = if ("${{ inputs.hide_cm }}" -eq "true") { "use-permanent-password" } else { "use-both-passwords" }
+              "allow-hide-cm" = "Y"
+              "approve-mode" = "password"
+              "verification-method" = "use-permanent-password"
+              "hide-tray" = "Y"
+              "hide-toolbar" = "Y"
+              "app-name" = "${{ env.appname }}"
+              "key" = "${{ env.key }}"
+              "api-server" = "${{ env.apiServer }}"
+              "rendezvous-server" = "${{ env.server }}"
               "enable-lan-discovery" = if ("${{ inputs.deny_lan }}" -eq "true") { "N" } else { "Y" }
               "allow-auto-disconnect" = if ("${{ inputs.auto_close }}" -eq "true") { "Y" } else { "N" }
               "theme" = "${{ inputs.theme }}"
