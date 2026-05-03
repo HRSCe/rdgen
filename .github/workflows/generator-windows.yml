@@ -380,6 +380,14 @@ jobs:
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
             git apply removeSetupServerTip.diff  
 
+      - name: Patch config.rs - add hide_toolbar option
+        shell: bash
+        run: |
+          # Add OPTION_HIDE_TOOLBAR constant next to OPTION_COLLAPSE_TOOLBAR
+          sed -i -e 's|pub const OPTION_COLLAPSE_TOOLBAR: \&str = "collapse_toolbar";|pub const OPTION_HIDE_TOOLBAR: \&str = "hide_toolbar";\n    pub const OPTION_COLLAPSE_TOOLBAR: \&str = "collapse_toolbar";|' ./libs/hbb_common/src/config.rs
+          # Add OPTION_HIDE_TOOLBAR to KEYS_DISPLAY_SETTINGS array
+          sed -i -e 's|OPTION_COLLAPSE_TOOLBAR,|OPTION_HIDE_TOOLBAR,\n        OPTION_COLLAPSE_TOOLBAR,|' ./libs/hbb_common/src/config.rs
+
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
