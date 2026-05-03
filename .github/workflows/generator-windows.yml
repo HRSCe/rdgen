@@ -382,10 +382,35 @@ jobs:
             git apply removeSetupServerTip.diff  
 
       - name: Patch remote_toolbar.dart - force hide toolbar
-        shell: bash
+        shell: python
         run: |
-          # Force the toolbar to always be hidden by hardcoding true instead of reading the toggle option
-          sed -i 's/bind\.sessionGetToggleOption(sessionId: sessionId, arg: kOptionHideToolbar)/true/g' ./flutter/lib/desktop/widgets/remote_toolbar.dart
+          filepath = './flutter/lib/desktop/widgets/remote_toolbar.dart'
+          with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+          
+          # Strategy 1: force hide.value = true after init sets it from session
+          # Replace:  hide.value = results[1] ?? false;
+          # With:     hide.value = true;
+          patched = content.replace(
+            'hide.value = results[1] ?? false;',
+            'hide.value = true;'
+          )
+          
+          # Strategy 2 (fallback): if the results pattern wasn't found, force at class level
+          if patched == content:
+            print("Strategy 1 failed, trying strategy 2...")
+            patched = content.replace(
+              'RxBool hide = false.obs;',
+              'RxBool hide = true.obs;'
+            )
+          
+          if patched == content:
+            print("WARNING: No pattern matched! Toolbar patch may not work.")
+          else:
+            print("Toolbar patch applied successfully.")
+          
+          with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(patched)
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
