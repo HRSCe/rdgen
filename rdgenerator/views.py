@@ -100,37 +100,36 @@ def generator_view(request):
             myuuid = str(uuid.uuid4())
             protocol = _settings.PROTOCOL
             host = request.get_host()
-            full_url = f"{protocol}://{host}"
-            try:
-                iconfile = form.cleaned_data.get('iconfile')
-                if not iconfile:
-                    iconfile = form.cleaned_data.get('iconbase64')
-                iconlink_url, iconlink_uuid, iconlink_file = save_png(iconfile,myuuid,full_url,"icon.png")
-            except:
-                print("failed to get icon, using default")
-                iconlink_url = "false"
-                iconlink_uuid = "false"
-                iconlink_file = "false"
-            try:
-                logofile = form.cleaned_data.get('logofile')
-                if not logofile:
-                    logofile = form.cleaned_data.get('logobase64')
-                logolink_url, logolink_uuid, logolink_file = save_png(logofile,myuuid,full_url,"logo.png")
-            except:
-                print("failed to get logo")
-                logolink_url = "false"
-                logolink_uuid = "false"
-                logolink_file = "false"
-            try:
-                privacyfile = form.cleaned_data.get('privacyfile')
-                if not privacyfile:
-                    privacyfile = form.cleaned_data.get('privacybase64')
-                privacylink_url, privacylink_uuid, privacylink_file = save_png(privacyfile,myuuid,full_url,"privacy.png")
-            except:
-                print("failed to get logo")
-                privacylink_url = "false"
-                privacylink_uuid = "false"
-                privacylink_file = "false"
+            full_url = _settings.GENURL if _settings.GENURL else f"{protocol}://{host}"
+            
+            iconlink_url = iconlink_uuid = iconlink_file = "false"
+            logolink_url = logolink_uuid = logolink_file = "false"
+            privacylink_url = privacylink_uuid = privacylink_file = "false"
+
+            iconfile = form.cleaned_data.get('iconfile') or form.cleaned_data.get('iconbase64')
+            logofile = form.cleaned_data.get('logofile') or form.cleaned_data.get('logobase64')
+            privacyfile = form.cleaned_data.get('privacyfile') or form.cleaned_data.get('privacybase64')
+
+            if iconfile:
+                print(f"Processing icon for UUID: {myuuid}")
+                try:
+                    iconlink_url, iconlink_uuid, iconlink_file = save_png(iconfile, myuuid, full_url, "icon.png")
+                except Exception as e:
+                    print(f"Icon processing failed: {e}")
+            
+            if logofile:
+                print(f"Processing logo for UUID: {myuuid}")
+                try:
+                    logolink_url, logolink_uuid, logolink_file = save_png(logofile, myuuid, full_url, "logo.png")
+                except Exception as e:
+                    print(f"Logo processing failed: {e}")
+
+            if privacyfile:
+                print(f"Processing privacy image for UUID: {myuuid}")
+                try:
+                    privacylink_url, privacylink_uuid, privacylink_file = save_png(privacyfile, myuuid, full_url, "privacy.png")
+                except Exception as e:
+                    print(f"Privacy image processing failed: {e}")
 
             ###create the custom.txt json here and send in as inputs below
             decodedCustom = {}
@@ -140,7 +139,7 @@ def generator_view(request):
                 decodedCustom['disable-installation'] = 'Y'
             if settings == "settingsN":
                 decodedCustom['disable-settings'] = 'Y'
-            if appname.upper != "rustdesk".upper and appname != "":
+            if appname.upper() != "rustdesk".upper() and appname != "":
                 decodedCustom['app-name'] = appname
             decodedCustom['override-settings'] = {}
             decodedCustom['default-settings'] = {}
@@ -200,12 +199,14 @@ def generator_view(request):
                 decodedCustom['override-settings']['enable-terminal'] = 'Y' if enableTerminal else 'N'
 
             for line in defaultManual.splitlines():
-                k, value = line.split('=')
-                decodedCustom['default-settings'][k.strip()] = value.strip()
+                if '=' in line:
+                    k, value = line.split('=', 1)
+                    decodedCustom['default-settings'][k.strip()] = value.strip()
 
             for line in overrideManual.splitlines():
-                k, value = line.split('=')
-                decodedCustom['override-settings'][k.strip()] = value.strip()
+                if '=' in line:
+                    k, value = line.split('=', 1)
+                    decodedCustom['override-settings'][k.strip()] = value.strip()
             
             decodedCustomJson = json.dumps(decodedCustom)
 
@@ -284,16 +285,35 @@ def generator_view(request):
             with open(temp_json_path, "w") as f:
                 json.dump(inputs_raw, f)
 
-            with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_LZMA, encryption=pyzipper.WZ_AES) as zf:
+            with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.AES_128) as zf:
                 zf.setpassword(_settings.ZIP_PASSWORD.encode())
                 zf.write(temp_json_path, arcname="secrets.json")
+                
+                # Add images to zip if they exist
+                if iconlink_file != "false":
+                    icon_path = os.path.join("png", myuuid, iconlink_file)
+                    if os.path.exists(icon_path):
+                        zf.write(icon_path, arcname="icon.png")
+                if logolink_file != "false":
+                    logo_path = os.path.join("png", myuuid, logolink_file)
+                    if os.path.exists(logo_path):
+                        zf.write(logo_path, arcname="logo.png")
+                if privacylink_file != "false":
+                    privacy_path = os.path.join("png", myuuid, privacylink_file)
+                    if os.path.exists(privacy_path):
+                        zf.write(privacy_path, arcname="privacy.png")
 
             if os.path.exists(temp_json_path):
                 os.remove(temp_json_path)
 
+            # Read zip file and encode to base64
+            with open(zip_path, "rb") as f:
+                zip_base64 = base64.b64encode(f.read()).decode('utf-8')
+
             zipJson = {}
             zipJson['url'] = full_url
             zipJson['file'] = zip_filename
+            zipJson['data'] = zip_base64
 
             zip_url = json.dumps(zipJson)
 
@@ -310,26 +330,32 @@ def generator_view(request):
                 'Accept':  'application/vnd.github+json',
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer '+_settings.GHBEARER,
-                'X-GitHub-Api-Version': '2026-03-10'
+                'X-GitHub-Api-Version': '2022-11-28'
             }
             new_github_run = GithubRun(
                 uuid=myuuid,
                 status="Starting generator...please wait"
             )
             try:
+                print(f"DEBUG: Sending POST to {url}")
+                print(f"DEBUG: Headers: {headers}")
                 response = requests.post(url, json=data, headers=headers)
                 #print(response)
-                if response.status_code == 204 or response.status_code == 200:
-                    github_data = response.json()
-                    print(github_data)
-                    new_github_run.github_run_id = github_data.get('workflow_run_id')
+                if response.status_code in [200, 201, 204]:
+                    # GitHub dispatch returns 204 No Content, so we don't try to parse JSON
+                    if response.status_code != 204:
+                        try:
+                            github_data = response.json()
+                            new_github_run.github_run_id = github_data.get('workflow_run_id')
+                        except:
+                            pass
+                    
                     new_github_run.status = "in_progress"
                     new_github_run.save()
 
-                    return render(request, 'waiting.html', {'filename':filename, 'uuid':myuuid, 'status':"Starting generator...please wait", 'platform':platform, 'log_url': github_data.get('html_url')})
+                    return render(request, 'waiting.html', {'filename':filename, 'uuid':myuuid, 'status':"Starting generator...please wait", 'platform':platform})
                 else:
-                    #new_github_run.delete()
-                    return JsonResponse({"error": "GitHub rejected the start request"}, status=500)
+                    return JsonResponse({"error": f"GitHub rejected the start request (Status {response.status_code}): {response.text}"}, status=500)
             except Exception as e:
                 #new_github_run.delete()
                 return JsonResponse({"error": f"Connection error: {str(e)}"}, status=500)
@@ -512,11 +538,9 @@ def save_png(file, uuid, domain, name):
             decoded_img = base64.b64decode(encoded)
             file = ContentFile(decoded_img, name=name) # Create a file-like object
         except ValueError:
-            print("Invalid base64 data")
-            return None  # Or handle the error as you see fit
-        except Exception as e:  # Catch general exceptions during decoding
-            print(f"Error decoding base64: {e}")
-            return None
+            raise Exception("Invalid base64 data")
+        except Exception as e:
+            raise Exception(f"Error decoding base64: {e}")
         
     with open(file_save_path, "wb+") as f:
         for chunk in file.chunks():
